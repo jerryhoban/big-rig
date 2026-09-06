@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Big Rig V6.03 - Equipment Playtest</title>
+<title>Big Rig V6.04 - Equipment Playtest</title>
 <style>
 :root {
   --bg:#0e1116; --panel:#171c24; --panel2:#202733; --line:#303a49;
@@ -3374,14 +3374,15 @@ setup=function(){setupBeforeCompactModulesV53();decorateCompactModuleGrid()};
 .electric-bolt{color:#57d37f;text-shadow:0 0 5px rgba(87,211,127,.65)}
 .equipment-warning{margin:8px 0;padding:7px;border:1px solid #c65d5d;border-radius:7px;background:#421b1b;color:#ffc0c0}
 @media(max-width:800px){.specialty-markets{grid-template-columns:1fr}.specialty-market .region-cards{grid-template-columns:repeat(3,minmax(145px,1fr));overflow-x:auto}.equipment-rating-grid{grid-template-columns:1fr 1fr}}
+.equipment-spec-name{color:#080b0e!important;font-weight:950!important}.equipment-board .module-strip{grid-template-columns:1fr!important}.equipment-board .module-strip>.module-enabled:nth-child(n+2){display:none!important}.equipment-tag-row{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin:3px 0}.equipment-tag{padding:1px 5px;border:1px solid #4a9b67;border-radius:999px;background:#163b24;color:#91e6a9;font-size:8px;font-weight:950}.equipment-tag.heavy-capable{border-color:#d28a43;background:#452a13;color:#ffc17b}.load-equipment-eligibility{width:auto;grid-column:1/-1;margin:5px 0 0}.region-board>h3{display:flex!important;align-items:center;gap:7px}.region-board>h3 .region-weather-slot{flex:0 1 auto;margin:0 auto!important;max-width:58%;padding:2px 7px}.region-board>h3 .region-count{margin-left:0!important;white-space:nowrap}
 </style>
 <script id="v600-equipment-runtime">
 const V6_TRACTORS=[
  {id:"road-diesel-200",className:"Road Tractor",energyType:"Diesel",capacity:200,efficiency:8,unit:"gal",range:1600,wrench:1,badge:1,rep:5},
  {id:"road-diesel-300",className:"Road Tractor",energyType:"Diesel",capacity:300,efficiency:8,unit:"gal",range:2400,wrench:1,badge:1,rep:5},
  {id:"heavy-diesel-200",className:"Heavy Duty Tractor",energyType:"Diesel",capacity:200,efficiency:7,unit:"gal",range:1400,wrench:2,badge:1,rep:10,heavy:true},
- {id:"road-electric-300",className:"Road Tractor",energyType:"Electric",capacity:300,efficiency:200/300,unit:"kWh",range:200,wrench:0,badge:1,rep:10},
- {id:"road-electric-450",className:"Road Tractor",energyType:"Electric",capacity:450,efficiency:250/450,unit:"kWh",range:250,wrench:0,badge:1,rep:10}
+ {id:"road-electric-300",className:"Road Tractor",energyType:"Electric",capacity:300,efficiency:200/300,unit:"kWh",range:200,wrench:0,badge:1,rep:10,heavy:true,green:true},
+ {id:"road-electric-450",className:"Road Tractor",energyType:"Electric",capacity:450,efficiency:250/450,unit:"kWh",range:250,wrench:0,badge:1,rep:10,heavy:true,green:true}
 ];
 const V6_TRAILERS=[
  {id:"dry-van",type:"Dry Van",wrench:1,badge:1,rep:0,compat:["Dry Van"]},
@@ -3505,6 +3506,45 @@ const showVersionDetailBeforeV603=showVersionDetail;
 showVersionDetail=function(){showVersionDetailBeforeV603();const detail=document.querySelector(".version-detail-text");if(detail){detail.innerHTML=detail.innerHTML.replaceAll("V6.02","V6.03");detail.insertAdjacentHTML("beforeend",`<br><br><b>V6.03 Dashboard</b><br>Maintenance and Compliance icons remain in single horizontal rows<br>Fuel and charge gauges use green, yellow, and red range thresholds`)}};
 const showRulesBeforeV603=showRules;
 showRules=function(){showRulesBeforeV603();const heading=document.querySelector("#modal h3");if(heading&&heading.textContent.includes("V6.02"))heading.textContent=heading.textContent.replace("V6.02","V6.03")};
+
+/* V6.04: Equipment stands alone; Maintenance & Compliance remains future-facing. */
+v6PowerSupports=function(load,power){return !v6LoadIsHeavy(load)||!!power?.heavy||power?.energyType==="Electric"};
+v6LoadEligibility=function(load,p=state.players[state.current]){const power=v6Power(p),trailer=v6OperatingTrailer(p);if(!v6TrailerSupports(load,trailer))return {ok:false,message:`Incompatible: ${trailer?.type||"No trailer"} cannot carry ${load.equipmentRequired?.join(" + ")||load.equipment}.`};if(!v6PowerSupports(load,power))return {ok:false,message:"Heavy Duty or Electric Tractor required."};return {ok:true,message:"Current equipment is eligible for this load."}};
+v6CanPickup=function(p,load){const check=v6LoadEligibility(load,p);return check.ok?{ok:true}:check};
+v6AcquireCheck=function(p,kind,s){const current=kind==="truck"?p.powerId:p.trailerId;if(s.id===current)return {ok:false,message:"CURRENT"};if(p.reputation<s.rep)return {ok:false,message:`NEEDS ${s.rep} REP`};if(kind==="trailer"&&!personalTrailerWithPlayer(p))return {ok:false,message:"TRAILER NOT ATTACHED"};if(kind==="trailer"&&(p.active||p.dhActive))return {ok:false,message:"ACTIVE LOAD"};const power=kind==="truck"?s:v6Power(p);if(p.active&&!v6PowerSupports(p.active,power))return {ok:false,message:"ACTIVE LOAD REQUIRES HEAVY OR ELECTRIC"};return {ok:true,message:"AVAILABLE"}};
+drive=driveBeforeV6;
+workAvailable=workAvailableBeforeV6;
+doRest=doRestBeforeV6;
+startDropHook=startDropHookBeforeV6;
+doLoad=function(id){const p=state.players[state.current],load=p.booked.find(l=>l.id===id);if(state.equipmentEnabled&&load){const check=v6CanPickup(p,load);if(!check.ok){openModal(`${moduleDialogTitle("equipment","Pickup unavailable")}<div class="equipment-warning">${esc(check.message)}</div><p>Buy compatible equipment or select another load.</p><button onclick="closeModal()">OK</button>`);return}}doLoadBeforeV6(id)};
+
+const loadRequirementsHtmlBeforeV604=loadRequirementsHtmlBeforeV6;
+loadRequirementsHtml=function(load){const base=loadRequirementsHtmlBeforeV604(load);if(!state.equipmentEnabled)return base;const heavy=v6LoadIsHeavy(load)?`<span class="heavy-badge">${moduleIcon("equipment")}Heavy Duty or Electric Tractor</span>`:"";return `${heavy?base.replace("</section>",`${heavy}</section>`):base}${v6LoadEligibilityHtml(load)}`};
+
+function v604PowerTags(power){return power?.energyType==="Electric"?`<div class="equipment-tag-row"><span class="equipment-tag">GREEN</span><span class="equipment-tag heavy-capable">HEAVY-CAPABLE</span></div>`:power?.heavy?`<div class="equipment-tag-row"><span class="equipment-tag heavy-capable">HEAVY-CAPABLE</span></div>`:""}
+const equipmentHtmlBeforeV604=equipmentHtml;
+equipmentHtml=function(p){let html=equipmentHtmlBeforeV604(p);if(!state.equipmentEnabled)return html;const power=v6Power(p),needle=`<div>${power.energyType}</div>`;return html.replace(needle,`${needle}${v604PowerTags(power)}`)};
+
+offDutyMenu=function(){const p=state.players[state.current],dealer=v6DealerAt(p),buy=state.equipmentEnabled?`<button onclick="equipmentTrade()" ${dealer?"":"disabled title=\"Buy is available at dealerships\""}>${moduleIcon("equipment")} Buy · 5 hours</button>`:"",stranded=isStranded(p),roadside=`<button class="${stranded?"danger":""}" onclick="roadsideAssistance()" ${stranded?"":'disabled title="Roadside Assistance is not needed"'}>⚠ Roadside Assistance</button>`;openModal(`<h3>Off Duty</h3><div class="choicegrid action-submenu"><button onclick="closeModal();searchLoadBoards()">🔎 Search Loads · 1 hour</button><button onclick="offDutyWait()">⏱ Wait</button>${buy}${roadside}</div><button onclick="closeModal()">Cancel</button>`)};
+const equipmentTradeBeforeV604=equipmentTrade;
+equipmentTrade=function(){equipmentTradeBeforeV604();const modal=document.getElementById("modal");if(modal)modal.innerHTML=modal.innerHTML.replaceAll("Acquire/Trade","Buy").replace("Trade your current","Use your current").replace(" and spend 5 hours"," as a trade-in and spend 5 hours")};
+const v6ConfirmAcquireBeforeV604=v6ConfirmAcquire;
+v6ConfirmAcquire=function(kind,id){v6ConfirmAcquireBeforeV604(kind,id);const modal=document.getElementById("modal");if(modal)modal.innerHTML=modal.innerHTML.replaceAll("Confirm Acquire/Trade","Confirm Buy").replace("Trade for","Buy")};
+
+const renderTabsBeforeV604=renderTabs;
+renderTabs=function(){renderTabsBeforeV604();if(!state.started||!state.equipmentEnabled)return;const p=state.players[state.current],buttons=[...document.querySelectorAll(".active-dashboard .action-btn")],off=buttons.find(b=>b.textContent.includes("OFF DUTY")),on=buttons.find(b=>b.textContent.includes("ON DUTY"));if(off){const dealer=v6DealerAt(p);off.querySelector(".action-cost").innerHTML=`<span class="subaction available">Search Loads</span> · <span class="subaction available">Wait</span> · <span class="subaction ${dealer?"available":""}">Buy</span> · <span class="roadside-symbol ${isStranded(p)?"active":"inactive"}">⚠</span>`}if(on){on.disabled=!workAvailable(p);on.querySelector(".action-cost").innerHTML=`<span class="subaction ${state.fuelEnabled&&serviceAtPosition(p)?.services?.fuel?"available":""}">${v6Power(p).energyType==="Electric"?"⚡ Charge":"Fuel"}</span> · <span class="subaction ${pickupOptions(p).live.length||pickupOptions(p).dh.length||pickupOptions(p).reattach?"available":""}">Pickup</span> · <span class="subaction ${deliverOptions(p).live||deliverOptions(p).dh?"available":""}">Deliver</span>`}};
+
+const renderMarketBeforeV604=renderMarket;
+renderMarket=function(){renderMarketBeforeV604();if(!state.started||!state.weatherEnabled)return;document.querySelectorAll("#regionalMarket .region-board").forEach(board=>{const h=board.querySelector(":scope>h3"),weather=board.querySelector(":scope>.region-weather-slot"),count=h?.querySelector(".region-count");if(h&&weather)h.insertBefore(weather,count||null)})};
+const setupBeforeV604=setup;
+setup=function(){setupBeforeV604();document.querySelectorAll(".module-choice b").forEach(label=>{if(label.textContent.trim().startsWith("Safety & Maintenance"))label.childNodes[0].textContent="Maintenance & Compliance "})};
+
+const v6RenderDealersBeforeV604=v6RenderDealers;
+v6RenderDealers=function(){v6RenderDealersBeforeV604();document.querySelectorAll(".dealership-marker").forEach(marker=>{marker.title=marker.title.replace("Acquire/Trade","Buy");marker.setAttribute("aria-label",marker.getAttribute("aria-label").replace("Acquire/Trade","Buy"));marker.innerHTML=marker.innerHTML.replaceAll("Acquire/Trade","Buy").replace("acquire or trade","buy")})};
+activityText=function(e){if(e.action==="equipment_trade")return `${e.player_name||"A driver"} buys ${e.equipment_name}.`;if(e.action==="charge")return `${e.player_name||"A driver"} charges in ${e.location}.`;return activityTextBeforeV6(e)};
+
+showVersionDetail=function(){openModal(`<h3>Version Detail</h3><div class="version-detail-text"><b>Big Rig V6.04 — Equipment Playtest</b><br><br><b>Included Modules</b><br><span class="module-legend-line">${moduleIcon("core")}<span class="module-name module-core">Core</span></span><br><span class="module-legend-line">${moduleIcon("fuel")}<span class="module-name module-fuel">Fuel</span></span><br><span class="module-legend-line">${moduleIcon("dh")}<span class="module-name module-dh">Drop & Hooks</span></span><br><span class="module-legend-line">${moduleIcon("customers")}<span class="module-name module-customers">Customer Hours</span></span><br><span class="module-legend-line">${moduleIcon("appointments")}<span class="module-name module-appointments">Appointments</span></span><br><span class="module-legend-line">${moduleIcon("weather")}<span class="module-name module-weather">Weather</span></span><br><span class="module-legend-line">${moduleIcon("equipment")}<span class="module-name module-equipment">Equipment</span></span><br><br><b>V6.04 Equipment</b><br>Ratings, Inspect, and Out of Compliance moved to the future Maintenance & Compliance module<br>Wrench and badge values remain future-facing card information<br>Equipment eligibility uses trailer compatibility and power requirements only<br>Electric tractors are Green and qualify for Heavy requirements<br>Buy uses the current equipment trade-in plus a 5-hour action<br>Specialty-market onboarding appears once per market per game<br><br><b>Interface</b><br>Off Duty: Search Loads · Wait · Buy · Roadside Assistance<br>Full-width expanded load eligibility<br>Weather status centered between region name and load count<br>Fuel and charge gauges retain range-warning colors</div><button class="primary" onclick="closeModal()">Close</button>`)};
+showRules=function(){showRulesBeforeV6();if(!state.equipmentEnabled)return;const modal=document.getElementById("modal"),heading=modal?.querySelector("h3"),close=modal?.querySelector("button.primary:last-child");if(heading)heading.textContent="Big Rig V6.04 — Rules";close?.insertAdjacentHTML("beforebegin",`<div class="small" style="line-height:1.55;border-top:1px solid #45515e;margin-top:12px;padding-top:8px"><p><b>Equipment:</b> Players begin with a 200-gallon Road Tractor and Dry Van. Wrench and badge values are printed for the future Maintenance & Compliance module and have no effect in this playtest.</p><p><b>Buy:</b> At the appropriate dealership, use your current equipment as a trade-in and spend 5 hours to buy a replacement. Every switch requires another Buy action. REP is an eligibility threshold and is not spent. Tractors may be replaced during an active load when compatible; trailers may not.</p><p><b>Specialty Freight:</b> Buying a Tanker or Flatbed activates its shared 24-card market with three face-up loads.</p><p><b>Heavy Freight:</b> Heavy Duty and Electric tractors both satisfy Heavy power requirements.</p><p><b>Electric:</b> Electric tractors carry Green and Heavy-Capable tags and charge at any Fuel location for 1 hour.</p></div>`)};
 render();
 </script>
 
